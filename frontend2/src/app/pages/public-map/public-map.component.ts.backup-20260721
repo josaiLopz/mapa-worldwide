@@ -1,0 +1,737 @@
+import { AfterViewInit, Component, HostListener, OnInit, ElementRef, ViewChild } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { switchMap } from 'rxjs';
+
+import { LocalService } from '../../../services/local.service';
+import { MapaService } from '../../../services/mapa.service';
+import { Canvas, Rect, Shadow } from 'fabric';
+import { API_ORIGIN } from '../../api.config';
+
+@Component({
+  selector: 'app-public-map',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  templateUrl: './public-map.component.html',
+  styleUrls: ['./public-map.component.scss']
+})
+export class PublicMapComponent implements OnInit, AfterViewInit {
+  @ViewChild('zoomLayer') zoomLayerRef!: ElementRef<HTMLDivElement>;
+
+  canvas!: Canvas;
+
+  canvasBaseWidth  = 1800;
+  canvasBaseHeight = 1000;
+  mapScale         = 1;
+  stageWidth       = 1800;
+  stageHeight      = 1000;
+  mapaId           = 1;
+  objetos: any[]   = [];
+  componentes: any[] = [];
+  busqueda         = '';
+  resultados: any  = null;
+  tagsPorLocal: Record<number, string[]> = {};
+  localActivo: any = null;
+  adminSettings: any = { background_color: '#f3f4f6', logo: '' };
+  adminLogo = '';
+  imagenAmpliada = '';
+  imagenAmpliadaAlt = '';
+
+  mostrarBarraBusqueda = false;
+
+  mostrarOnboarding = false;
+  mostrarHorizontalHint = false;
+  mostrarPinchHint = false;
+  mostrarBusquedaHint = false;
+  primerLocalIndex  = -1;
+
+  // ── Pinch-to-zoom state (CSS transform compartido) ──
+  private zoomScale = 1;          // escala visual aplicada (1 = sin zoom)
+  private zoomTranslateX = 0;
+  private zoomTranslateY = 0;
+  private minZoomFactor = 1;      // no permitir alejar más del tamaño normal
+  private maxZoomFactor = 4;      // tope de acercamiento
+  private lastPinchDistance = 0;
+  private isPinching = false;
+  private isPanning = false;
+  private lastPanX = 0;
+  private lastPanY = 0;
+  private resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastViewportWidth = window.innerWidth;
+
+  private apiBase = API_ORIGIN;
+
+  constructor(
+    private localService: LocalService,
+    private mapaService: MapaService
+  ) {}
+
+  ngOnInit(): void {
+    this.cargarAdminSettings();
+    this.cargarComponentesPublicos();
+    this.cargarMapaActivo();
+  }
+
+  private cargarComponentesPublicos(): void {
+    this.localService.getComponentes().subscribe({
+      next: (componentes: any) => {
+        this.componentes = componentes;
+        if (this.canvas && this.objetos.length) this.dibujarCanvas();
+      },
+      error: (err) => console.error(err)
+    });
+  }
+
+  private cargarAdminSettings(): void {
+    this.localService.getAdminSettings().subscribe({
+      next: (settings: any) => {
+        this.adminSettings = settings;
+        this.adminLogo = this.logoUrl(settings.logo);
+        if (this.canvas) {
+          this.canvas.backgroundColor = settings.background_color || '#f3f4f6';
+          this.canvas.requestRenderAll();
+        }
+      },
+      error: (err) => console.error(err)
+    });
+  }
+
+  ngAfterViewInit(): void {
+
+    this.canvas = new Canvas('publicMapCanvas', {
+      width: this.canvasBaseWidth,
+      height: this.canvasBaseHeight,
+      backgroundColor: this.adminSettings.background_color || '#f3f4f6',
+      selection: false
+    });
+
+    this.canvas.on('mouse:down', (event) => {
+      const target = event.target as any;
+      const local = target?.get('local');
+
+      if (local) {
+        this.abrirLocal(local);
+      }
+    });
+
+    // Hover moderno
+    this.canvas.on('mouse:over', (event) => {
+      const target = event.target as any;
+      if (!target?.get('local')) return;
+
+      target.set({
+        stroke: '#074d3c',
+        strokeWidth: 3
+      });
+
+      this.canvas.requestRenderAll();
+    });
+
+    this.canvas.on('mouse:out', (event) => {
+      const target = event.target as any;
+      if (!target?.get('local')) return;
+
+      const highlighted =
+        target.get('local')?.id &&
+        this.esLocalResaltado(Number(target.get('local').id));
+
+      target.set({
+        stroke: highlighted ? '#074d3c' : '#d1d5db',
+        strokeWidth: highlighted ? 4 : 1.5
+      });
+
+      this.canvas.requestRenderAll();
+    });
+
+    setTimeout(() => {
+      this.redimensionarCanvas();
+      this.attachPinchZoom();
+    });
+
+    if (this.objetos.length) {
+      this.dibujarCanvas();
+    }
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {
+    const viewportWidth = window.innerWidth;
+    if (Math.abs(viewportWidth - this.lastViewportWidth) < 40) return;
+    this.lastViewportWidth = viewportWidth;
+
+    if (this.resizeTimer) clearTimeout(this.resizeTimer);
+    this.resizeTimer = setTimeout(() => {
+      this.resetZoomInstant();
+      this.redimensionarCanvas();
+    }, 120);
+  }
+
+  // ── Pinch-to-zoom (CSS transform compartido canvas + labels) ──
+  private attachPinchZoom(): void {
+    const wrapperEl = this.canvas.upperCanvasEl as HTMLCanvasElement;
+    if (!wrapperEl) return;
+
+    wrapperEl.style.touchAction = 'none'; // evita scroll/zoom del navegador
+
+    wrapperEl.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    wrapperEl.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    wrapperEl.addEventListener('touchend', this.onTouchEnd, { passive: false });
+    wrapperEl.addEventListener('touchcancel', this.onTouchEnd, { passive: false });
+  }
+
+  private getTouchDistance(touches: TouchList): number {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  private getTouchMidpoint(touches: TouchList): { x: number, y: number } {
+    const rect = this.zoomLayerRef.nativeElement.parentElement!.getBoundingClientRect();
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+      y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+    };
+  }
+
+  private onTouchStart = (e: TouchEvent): void => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      this.isPinching = true;
+      this.lastPinchDistance = this.getTouchDistance(e.touches);
+      this.isPanning = false;
+    } else if (e.touches.length === 1 && this.zoomScale > 1) {
+      e.preventDefault();
+      this.isPanning = true;
+      this.lastPanX = e.touches[0].clientX;
+      this.lastPanY = e.touches[0].clientY;
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent): void => {
+    if (e.touches.length === 2 && this.isPinching) {
+      e.preventDefault();
+
+      const newDistance = this.getTouchDistance(e.touches);
+      const midpoint = this.getTouchMidpoint(e.touches);
+
+      if (this.lastPinchDistance > 0) {
+        const distanceRatio = newDistance / this.lastPinchDistance;
+
+        let nextScale = this.zoomScale * distanceRatio;
+        nextScale = Math.min(this.maxZoomFactor, Math.max(this.minZoomFactor, nextScale));
+
+        // Para que el punto bajo los dedos permanezca fijo en pantalla
+        const scaleDelta = nextScale / this.zoomScale;
+
+        this.zoomTranslateX = midpoint.x - (midpoint.x - this.zoomTranslateX) * scaleDelta;
+        this.zoomTranslateY = midpoint.y - (midpoint.y - this.zoomTranslateY) * scaleDelta;
+
+        this.zoomScale = nextScale;
+
+        this.clampTranslate();
+        this.applyZoomTransform();
+      }
+
+      this.lastPinchDistance = newDistance;
+    } else if (e.touches.length === 1 && this.isPanning && this.zoomScale > 1) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      this.zoomTranslateX += touch.clientX - this.lastPanX;
+      this.zoomTranslateY += touch.clientY - this.lastPanY;
+      this.lastPanX = touch.clientX;
+      this.lastPanY = touch.clientY;
+      this.clampTranslate();
+      this.applyZoomTransform();
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent): void => {
+    if (e.touches.length < 2) {
+      this.isPinching = false;
+      this.lastPinchDistance = 0;
+
+      if (this.zoomScale <= 1) {
+        this.resetZoomAnimado();
+      }
+    }
+    if (e.touches.length === 0) this.isPanning = false;
+  };
+
+  /** Evita que el contenido se desplace fuera del área visible */
+  private clampTranslate(): void {
+    const el = this.zoomLayerRef?.nativeElement;
+    const stage = el?.parentElement; // .canvas-stage
+    if (!stage) return;
+
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+
+    const scaledW = stageW * this.zoomScale;
+    const scaledH = stageH * this.zoomScale;
+
+    const minX = stageW - scaledW; // límite izquierdo (negativo o 0)
+    const minY = stageH - scaledH; // límite superior (negativo o 0)
+
+    this.zoomTranslateX = Math.min(0, Math.max(minX, this.zoomTranslateX));
+    this.zoomTranslateY = Math.min(0, Math.max(minY, this.zoomTranslateY));
+  }
+
+  private applyZoomTransform(): void {
+    const el = this.zoomLayerRef?.nativeElement;
+    if (!el) return;
+
+    el.style.transform =
+      `translate(${this.zoomTranslateX}px, ${this.zoomTranslateY}px) scale(${this.zoomScale})`;
+  }
+
+  /** Resetea sin animación (uso interno, p.ej. en resize) */
+  private resetZoomInstant(): void {
+    this.zoomScale = 1;
+    this.zoomTranslateX = 0;
+    this.zoomTranslateY = 0;
+    this.applyZoomTransform();
+  }
+
+  /** Regresa animado al estado original (sin zoom) */
+  private resetZoomAnimado(): void {
+    const startScale = this.zoomScale;
+    const startX = this.zoomTranslateX;
+    const startY = this.zoomTranslateY;
+
+    const duration = 220;
+    const start = performance.now();
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+
+      this.zoomScale = startScale + (1 - startScale) * eased;
+      this.zoomTranslateX = startX + (0 - startX) * eased;
+      this.zoomTranslateY = startY + (0 - startY) * eased;
+
+      this.applyZoomTransform();
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        this.resetZoomInstant();
+      }
+    };
+
+    requestAnimationFrame(step);
+  }
+
+  // ── Carga ───────────────────────────────────────
+  cargarMapaActivo(): void {
+    this.mapaService.getMapas().pipe(
+      switchMap((mapas: any) => {
+        this.mapaId = mapas?.[0]?.id ?? 1;
+        return this.mapaService.getObjetos(this.mapaId, true);
+      })
+    ).subscribe({
+      next: (objetos: any) => {
+        this.objetos = objetos;
+        this.redimensionarCanvas();
+        this.dibujarCanvas();
+        this.iniciarOnboarding();
+      },
+      error: (err) => console.error(err)
+    });
+  }
+
+  // ── Onboarding ──────────────────────────────────
+  private iniciarOnboarding(): void {
+    if (localStorage.getItem('croquis_onboarding_visto')) {
+      this.mostrarOnboarding = false;
+      this.mostrarHorizontalHint = false;
+      this.mostrarPinchHint = false;
+      this.mostrarBusquedaHint = false;
+      return;
+    }
+
+    this.primerLocalIndex = this.objetos.findIndex(o => o.tipo === 'local');
+
+    // Paso 1: rotar dispositivo
+    this.mostrarHorizontalHint = true;
+
+    setTimeout(() => {
+      this.mostrarHorizontalHint = false;
+
+      // Paso 2: pinch to zoom
+      this.mostrarPinchHint = true;
+
+      setTimeout(() => {
+        this.mostrarPinchHint = false;
+
+        // Paso 3: tocar un local (solo si existe alguno)
+        if (this.primerLocalIndex >= 0) {
+          this.mostrarOnboarding = true;
+
+          setTimeout(() => {
+            this.mostrarOnboarding = false;
+            this.finalizarOnboarding();
+          }, 3000);
+        } else {
+          this.finalizarOnboarding();
+        }
+
+      }, 2500); // duración del hint de pinch
+
+    }, 3000); // duración del hint horizontal
+  }
+
+  private finalizarOnboarding(): void {
+    this.mostrarOnboarding = false;
+    this.mostrarHorizontalHint = false;
+    this.mostrarPinchHint = false;
+    this.mostrarBusquedaHint = false;
+    localStorage.setItem('croquis_onboarding_visto', '1');
+  }
+
+  private ocultarOnboarding(): void {
+    this.finalizarOnboarding();
+  }
+
+  toggleBarraBusqueda(): void {
+    this.mostrarBarraBusqueda = !this.mostrarBarraBusqueda;
+  }
+
+  // ── Búsqueda ────────────────────────────────────
+  buscar(): void {
+    if (this.mostrarBusquedaHint || this.mostrarHorizontalHint || this.mostrarPinchHint || this.mostrarOnboarding) {
+      this.ocultarOnboarding();
+    }
+
+    const texto = this.busqueda.trim();
+    if (!texto) {
+      this.resultados   = null;
+      this.tagsPorLocal = {};
+      this.dibujarCanvas();
+      return;
+    }
+    this.localService.buscarGlobal(texto).subscribe({
+      next: (data: any) => {
+        this.resultados   = data;
+        this.tagsPorLocal = this.obtenerTags(data);
+        this.dibujarCanvas();
+      },
+      error: (err) => console.error(err)
+    });
+  }
+
+  limpiarBusqueda(): void {
+    this.busqueda     = '';
+    this.resultados   = null;
+    this.tagsPorLocal = {};
+    this.dibujarCanvas();
+  }
+
+  // ── Modal ───────────────────────────────────────
+  abrirLocal(local: any): void {
+    if (this.mostrarOnboarding || this.mostrarPinchHint || this.mostrarHorizontalHint) {
+      this.ocultarOnboarding();
+    }
+    this.localActivo = local;
+  }
+
+  cerrarModal(): void {
+    this.localActivo = null;
+  }
+
+  abrirObjeto(objeto: any): void {
+    const componente = this.componenteDeObjeto(objeto);
+    const imagen = componente?.imagen || componente?.icono;
+
+    if (objeto?.tipo === 'componente' && imagen) {
+      this.ampliarImagen(imagen, componente?.nombre || objeto?.nombre || 'Componente');
+      return;
+    }
+
+    if (objeto?.local) this.abrirLocal(objeto.local);
+  }
+
+  ampliarImagen(imagen: string, alt = 'Imagen del componente'): void {
+    this.imagenAmpliada = this.logoUrl(imagen);
+    this.imagenAmpliadaAlt = alt;
+  }
+
+  cerrarImagenAmpliada(): void {
+    this.imagenAmpliada = '';
+    this.imagenAmpliadaAlt = '';
+  }
+
+  // ── Helpers ─────────────────────────────────────
+  normalizarUrl(url: string | null | undefined): string {
+    if (!url) return '';
+    return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  }
+
+  limpiarTelefono(telefono: string | null | undefined): string {
+    return (telefono || '').replace(/\D/g, '');
+  }
+
+  logoUrl(logo: string | null | undefined): string {
+    if (!logo) return '';
+    return logo.startsWith('http') ? logo : `${this.apiBase}${logo}`;
+  }
+
+  etiquetaLocal(local: any): string {
+    const numero = local?.numero_local ? `Local ${local.numero_local}` : '';
+    const nombre = local?.nombre || '';
+
+    if (numero && nombre) return `${numero} - ${nombre}`;
+    return numero || nombre || 'Local';
+  }
+
+  nombreLocal(local: any, fallback = 'Local'): string {
+    return local?.nombre || fallback || 'Local';
+  }
+
+  numeroLocal(local: any): string {
+    return local?.numero_local ? `Local ${local.numero_local}` : 'Local';
+  }
+
+  etiquetaTipo(tipo: string): string {
+    const tipos: Record<string, string> = {
+      local:              'Local',
+      escalera:           'Escalera',
+      escalera_electrica: 'Escalera eléctrica',
+      pasillo:            'Pasillo',
+      mesas:              'Zona de mesas',
+      maquinitas:         'Maquinitas'
+    };
+    return tipos[tipo] ?? tipo;
+  }
+
+  componenteDeObjeto(objeto: any): any {
+    const componenteId = Number(objeto?.metadata?.component_id || 0);
+    if (!componenteId) return null;
+
+    return (objeto.local?.componentes || [])
+      .find((componente: any) => Number(componente.id) === componenteId)
+      || this.componentes.find((componente: any) => Number(componente.id) === componenteId)
+      || null;
+  }
+
+  esLocalResaltado(localId: number): boolean {
+    return Boolean(this.tagsPorLocal[localId]?.length);
+  }
+
+  tagsLocal(localId: number): string[] {
+    return this.tagsPorLocal[localId] ?? [];
+  }
+
+  tieneResultados(): boolean {
+    if (!this.resultados) return false;
+    return Boolean(
+      this.resultados.locales?.length      ||
+      this.resultados.productos?.length    ||
+      this.resultados.servicios?.length    ||
+      this.resultados.mapa_objetos?.length
+    );
+  }
+
+  // ── Estilos de posicionamiento ──────────────────
+  estilosObjeto(objeto: any): Record<string, string> {
+    let x = Number(objeto.x);
+    let y = Number(objeto.y);
+    let w = Number(objeto.width);
+    let h = Number(objeto.height);
+    const nombre = objeto.tipo === 'local'
+      ? this.nombreLocal(objeto.local, objeto.nombre)
+      : (this.componenteDeObjeto(objeto)?.nombre || objeto.nombre || this.etiquetaTipo(objeto.tipo));
+
+    if (objeto.tipo === 'componente' && objeto.local_id) {
+      const local = this.objetos.find((item: any) => item.tipo === 'local'
+        && Number(item.local_id) === Number(objeto.local_id));
+
+      if (local) {
+        const margin = 4;
+        const localX = Number(local.x) + margin;
+        const localY = Number(local.y) + margin;
+        const localWidth = Math.max(1, Number(local.width) - margin * 2);
+        const localHeight = Math.max(1, Number(local.height) - margin * 2);
+        w = Math.min(w, localWidth);
+        h = Math.min(h, localHeight);
+        x = Math.min(Math.max(x, localX), localX + localWidth - w);
+        y = Math.min(Math.max(y, localY), localY + localHeight - h);
+      }
+    }
+
+    const esLocal = objeto.tipo === 'local';
+    const scaledWidth = w * this.mapScale;
+    const scaledHeight = h * this.mapScale;
+
+    return {
+      left: `${x * this.mapScale}px`,
+      top: `${y * this.mapScale}px`,
+      width: `${esLocal ? Math.max(34, Math.min(94, scaledWidth - 6)) : scaledWidth}px`,
+      height: `${esLocal ? Math.max(34, Math.min(74, scaledHeight - 6)) : scaledHeight}px`,
+      transform: esLocal
+        ? `translate(-50%, -50%) rotate(${Number(objeto.rotation ?? 0)}deg)`
+        : `rotate(${Number(objeto.rotation ?? 0)}deg)`,
+      transformOrigin: esLocal ? 'center center' : 'top left',
+      '--label-font-size': `${this.tamanoTextoEtiqueta(w, h, nombre)}px`,
+      '--label-lines': `${this.lineasTextoEtiqueta(h)}`
+    };
+  }
+
+  estilosTagEtiqueta(objeto: any): Record<string, string> {
+    const x = Number(objeto.x) * this.mapScale;
+    const y = Number(objeto.y) * this.mapScale;
+
+    const tagHeight = 46;
+    const hiloHeight = 10;
+    const localIconHeight = 36;
+
+    const centerX = x;
+    const centerY = y;
+
+    const groupTop = centerY - (localIconHeight / 2) - hiloHeight - tagHeight;
+
+    return {
+      left: `${centerX}px`,
+      top: `${groupTop}px`,
+      transform: 'translateX(-50%)',
+      '--object-rotation': `${Number(objeto.rotation ?? 0)}deg`,
+      '--label-font-size': `${this.tamanoTextoEtiqueta(Number(objeto.width), Number(objeto.height), this.nombreLocal(objeto.local, objeto.nombre))}px`,
+      '--label-lines': `${this.lineasTextoEtiqueta(Number(objeto.height))}`
+    };
+  }
+
+  private tamanoTextoEtiqueta(width: number, height: number, texto: string): number {
+    const scaledWidth = width * this.mapScale;
+    const scaledHeight = height * this.mapScale;
+    const base = Math.min(
+      scaledWidth / Math.max(String(texto || '').length * 0.55, 7),
+      scaledHeight / 5
+    );
+
+    return Math.round(Math.max(7, Math.min(13, base)));
+  }
+
+  private lineasTextoEtiqueta(height: number): number {
+    const scaledHeight = height * this.mapScale;
+    if (scaledHeight < 38) return 1;
+    if (scaledHeight < 66) return 2;
+    return 3;
+  }
+
+  colorPorTipo(tipo: string): string {
+    const colores: Record<string, string> = {
+      local:              '#1D9E75',
+      escalera:           '#888888',
+      escalera_electrica: '#f59e0b',
+      pasillo:            '#9aa6b2',
+      mesas:              '#93c5fd',
+      maquinitas:         '#c4b5fd'
+    };
+    return colores[tipo] ?? '#d6d6d6';
+  }
+
+  // ── Canvas ──────────────────────────────────────
+  private dibujarCanvas(): void {
+    if (!this.canvas) return;
+
+    this.canvas.clear();
+    this.canvas.backgroundColor = this.adminSettings.background_color || '#f3f4f6';
+
+    this.objetos.forEach((objeto) => {
+
+      const esLocal = objeto.tipo === 'local';
+
+      const isHighlighted =
+        objeto.local_id &&
+        this.esLocalResaltado(Number(objeto.local_id));
+
+      const width = Number(objeto.width);
+      const height = Number(objeto.height);
+      const componente = objeto.tipo === 'componente' ? this.componenteDeObjeto(objeto) : null;
+      const componenteConImagen = Boolean(componente?.icono || componente?.imagen);
+
+      const rect = new Rect({
+        left: Number(objeto.x),
+        top: Number(objeto.y),
+
+        width,
+        height,
+
+        fill: componenteConImagen
+          ? 'rgba(255,255,255,0)'
+          : esLocal
+          ? (objeto.color || '#ffffff')
+          : (objeto.tipo === 'componente' ? (objeto.color || '#d6d6d6') : this.colorPorTipo(objeto.tipo)),
+
+        rx: esLocal ? 16 : 4,
+        ry: esLocal ? 16 : 4,
+
+        stroke: componenteConImagen ? 'rgba(0,0,0,0)' : (isHighlighted ? '#074d3c' : '#d1d5db'),
+        strokeWidth: componenteConImagen ? 0 : (isHighlighted ? 4 : 1.5),
+
+        angle: Number(objeto.rotation ?? 0),
+
+        selectable: false,
+
+        hoverCursor: objeto.local ? 'pointer' : 'default',
+
+        shadow: esLocal
+          ? new Shadow({
+              color: 'rgba(0,0,0,.10)',
+              blur: 12,
+              offsetX: 0,
+              offsetY: 4
+            })
+          : undefined
+      });
+
+      rect.set({
+        local: objeto.local || null,
+        tipo: objeto.tipo
+      } as any);
+
+      this.canvas.add(rect);
+    });
+
+    this.canvas.renderAll();
+  }
+
+  private redimensionarCanvas(): void {
+    if (!this.canvas) return;
+
+    const wrap = document.querySelector('.canvas-stage-wrap') as HTMLElement | null;
+    if (!wrap) return;
+
+    const availableWidth  = wrap.clientWidth;
+    const availableHeight = wrap.clientHeight;
+
+    const scaleW = availableWidth  / this.canvasBaseWidth;
+    const scaleH = availableHeight / this.canvasBaseHeight;
+
+    this.mapScale    = Math.max(0.25, Math.min(scaleW, scaleH));
+    this.stageWidth  = Math.round(this.canvasBaseWidth  * this.mapScale);
+    this.stageHeight = Math.round(this.canvasBaseHeight * this.mapScale);
+
+    this.canvas.setDimensions({ width: this.stageWidth, height: this.stageHeight });
+    this.canvas.setZoom(this.mapScale);
+    this.canvas.requestRenderAll();
+  }
+
+  private obtenerTags(data: any): Record<number, string[]> {
+    const tags: Record<number, string[]> = {};
+
+    const addTag = (localId: number | null | undefined, tag: string) => {
+      if (!localId) return;
+      const id = Number(localId);
+      tags[id] = tags[id] ?? [];
+      if (!tags[id].includes(tag)) tags[id].push(tag);
+    };
+
+    data.locales?.forEach   ((l: any) => addTag(l.id,                             'Local'));
+    data.productos?.forEach ((p: any) => addTag(p.local_id ?? p.local?.id,        `Producto: ${p.nombre}`));
+    data.servicios?.forEach ((s: any) => addTag(s.local_id ?? s.local?.id,        `Servicio: ${s.nombre}`));
+    data.mapa_objetos?.forEach((o: any) => addTag(o.local_id ?? o.local?.id,      this.etiquetaTipo(o.tipo)));
+
+    return tags;
+  }
+
+}

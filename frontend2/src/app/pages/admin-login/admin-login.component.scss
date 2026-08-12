@@ -1,0 +1,258 @@
+.auth-shell {
+  --admin-dark: #0f1111;
+  --admin-panel: #181a1a;
+  --admin-soft: #202323;
+  --admin-line: #4f4632;
+  --admin-text: #e2e2e2;
+  --admin-muted: #d4c5ab;
+  --admin-accent: #ffc107;
+  --admin-accent-hover: #ffd34d;
+
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--admin-background, #0c0f0f);
+  color: var(--admin-text);
+  font-family: inherit;
+}
+
+.auth-topbar {
+  min-height: 54px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+  background: var(--admin-dark);
+  border-bottom: 1px solid #252525;
+}
+
+.auth-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-right: 1px solid #2f2a20;
+}
+
+.auth-title strong {
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.auth-title i {
+  color: #5a5348;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.auth-title span {
+  max-width: 190px;
+  color: #ffe2a5;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.auth-topbar-link {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  background: var(--admin-accent);
+  color: #151515;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: .03em;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.auth-topbar-link:hover {
+  background: var(--admin-accent-hover);
+}
+
+.auth-panel {
+  width: min(460px, calc(100% - 32px));
+  align-self: center;
+  justify-self: center;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: rgba(24, 26, 26, .98);
+  padding: 26px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .38);
+}
+
+.auth-heading {
+  margin-bottom: 20px;
+}
+
+.auth-logo {
+  display: block;
+  max-width: 190px;
+  max-height: 72px;
+  object-fit: contain;
+  margin: 0 auto 16px;
+}
+
+.auth-heading span {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--admin-accent);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+h1 {
+  color: #fff;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.auth-heading p {
+  margin-top: 8px;
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #121414;
+  margin-bottom: 18px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.mode-tabs button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--admin-accent);
+  color: #151515;
+  padding: 10px;
+  cursor: pointer;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.auth-form {
+  display: grid;
+  gap: 13px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--admin-muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  padding: 11px 12px;
+  background: #121414;
+  color: var(--admin-text);
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, .18);
+}
+
+.auth-form button {
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--admin-accent);
+  color: #151515;
+  padding: 13px;
+  cursor: pointer;
+  font-weight: 900;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+.auth-form button:hover {
+  background: var(--admin-accent-hover);
+}
+
+.auth-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.auth-message {
+  margin-top: 12px;
+  color: #ffbab3;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.register-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--admin-accent);
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.register-link:hover {
+  color: var(--admin-accent-hover);
+}
+
+@media (max-width: 640px) {
+  .auth-topbar {
+    flex-direction: column;
+  }
+
+  .auth-title {
+    min-height: 54px;
+    padding: 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid #252525;
+  }
+
+  .auth-title strong {
+    font-size: 18px;
+  }
+
+  .auth-title span {
+    font-size: 12px;
+  }
+
+  .auth-topbar-link {
+    min-height: 44px;
+  }
+
+  .auth-panel {
+    width: min(100% - 20px, 460px);
+    padding: 20px;
+  }
+}

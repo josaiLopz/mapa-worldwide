@@ -1,0 +1,471 @@
+<div class="editor-shell" [class.collapsed]="!sidePanelVisible" [style.--admin-background]="adminSettings.background_color">
+
+  <!-- BARRA LATERAL (colapsable) -->
+  <aside class="side-panel" *ngIf="sidePanelVisible">
+    <div class="admin-brand" *ngIf="adminLogoPreview">
+      <img [src]="adminLogoPreview" alt="Logo institucional">
+    </div>
+
+    <nav class="module-tabs">
+      <button type="button" [class.active]="panelActivo === 'locales'" (click)="panelActivo = 'locales'">Locales</button>
+      <button type="button" [class.active]="panelActivo === 'componentes'" (click)="panelActivo = 'componentes'">Componentes</button>
+      <button type="button" *ngIf="esSuperadmin()" [class.active]="panelActivo === 'usuarios'" (click)="panelActivo = 'usuarios'">Usuarios</button>
+      <button type="button" *ngIf="esSuperadmin()" [class.active]="panelActivo === 'configuracion'" (click)="panelActivo = 'configuracion'">Configuracion</button>
+    </nav>
+
+    <section class="panel-section" *ngIf="panelActivo === 'locales'">
+      <div class="section-header">
+        <h2>Buscador global</h2>
+      </div>
+
+      <div class="search-row">
+        <input
+          type="search"
+          placeholder="Local, producto o servicio"
+          [(ngModel)]="busqueda"
+          (keyup.enter)="buscarGlobal()">
+        <button type="button" (click)="buscarGlobal()">Buscar</button>
+      </div>
+
+      <div class="results" *ngIf="resultados">
+        <p *ngIf="!resultados.locales?.length && !resultados.productos?.length && !resultados.servicios?.length && !resultados.mapa_objetos?.length && !resultados.componentes?.length">
+          Sin resultados
+        </p>
+
+        <div *ngIf="resultados.locales?.length">
+          <h3>Locales</h3>
+          <button
+            class="result-item"
+            type="button"
+            *ngFor="let local of resultados.locales"
+            (click)="localSeleccionado = local.id">
+            {{ etiquetaLocal(local) }}
+          </button>
+        </div>
+
+        <div *ngIf="resultados.productos?.length">
+          <h3>Productos</h3>
+          <p class="result-item" *ngFor="let producto of resultados.productos">
+            {{ producto.nombre }} <span>{{ etiquetaLocal(producto.local) }}</span>
+          </p>
+        </div>
+
+        <div *ngIf="resultados.servicios?.length">
+          <h3>Servicios</h3>
+          <p class="result-item" *ngFor="let servicio of resultados.servicios">
+            {{ servicio.nombre }} <span>{{ etiquetaLocal(servicio.local) }}</span>
+          </p>
+        </div>
+
+        <div *ngIf="resultados.componentes?.length">
+          <h3>Componentes</h3>
+          <p class="result-item" *ngFor="let componente of resultados.componentes">
+            {{ componente.nombre }} <span>{{ etiquetaLocal(componente.local) }}</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-section" *ngIf="panelActivo === 'locales'">
+      <div class="section-header">
+        <h2>{{ localEditandoId ? 'Editar local' : 'Crear local' }}</h2>
+      </div>
+
+      <div class="edit-row">
+        <select [(ngModel)]="localSeleccionado" (ngModelChange)="seleccionarLocalEnCanvas($event)">
+          <option [value]="0">Seleccione local para editar</option>
+          <option *ngFor="let local of locales" [value]="local.id">
+            {{ etiquetaLocal(local) }}
+          </option>
+        </select>
+        <button type="button" class="small-button" (click)="editarLocalSeleccionado()">Editar</button>
+        <button type="button" class="small-button danger-button" *ngIf="esSuperadmin() && puedeEliminarLocal()" (click)="eliminarLocalSeleccionado()">
+          Eliminar
+        </button>
+      </div>
+
+      <label>
+        Numero de Local
+        <input type="text" [(ngModel)]="localForm.numero_local">
+      </label>
+
+      <label>
+        Nombre
+        <input type="text" [(ngModel)]="localForm.nombre">
+      </label>
+
+      <label>
+        Logo
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="seleccionarLogo($event)">
+      </label>
+
+      <div class="logo-preview" *ngIf="logoPreview">
+        <img [src]="logoPreview" alt="Logo del local">
+      </div>
+
+      <label>
+        Descripcion
+        <textarea rows="3" [(ngModel)]="localForm.descripcion"></textarea>
+      </label>
+
+      <label>
+        Horario
+        <textarea rows="2" [(ngModel)]="localForm.horario"></textarea>
+      </label>
+
+      <div class="field-grid">
+        <label>
+          Ancho
+          <input type="number" min="20" [(ngModel)]="localForm.width">
+        </label>
+
+        <label>
+          Alto
+          <input type="number" min="20" [(ngModel)]="localForm.height">
+        </label>
+
+        <label>
+          Color
+          <input type="color" [(ngModel)]="localForm.color">
+        </label>
+      </div>
+
+      <div class="field-grid">
+        <label>
+          Telefono
+          <input type="tel" [(ngModel)]="localForm.telefono">
+        </label>
+
+        <label>
+          WhatsApp
+          <input type="text" [(ngModel)]="localForm.whatsapp">
+        </label>
+      </div>
+
+      <label>
+        Correo
+        <input type="email" [(ngModel)]="localForm.correo">
+      </label>
+
+      <label>
+        Sitio web
+        <input type="url" [(ngModel)]="localForm.sitio_web">
+      </label>
+
+      <div class="section-header social-header">
+        <h2>Redes sociales</h2>
+        <div class="social-add" *ngIf="redesOcultas().length">
+          <select #socialSelect>
+            <option value="">Mas redes</option>
+            <option *ngFor="let field of redesOcultas()" [value]="field.key">{{ field.label }}</option>
+          </select>
+          <button
+            type="button"
+            class="small-button"
+            (click)="socialSelect.value && mostrarRedSocial(socialSelect.value); socialSelect.value = ''">
+            Mas
+          </button>
+        </div>
+      </div>
+
+      <div class="social-fields">
+        <label *ngFor="let field of socialFields" [class.hidden-field]="!visibleSocialFields[field.key]">
+          <span>
+            {{ field.label }}
+            <button type="button" class="link-button" (click)="ocultarRedSocial(field.key)">Ocultar</button>
+          </span>
+          <input type="text" [placeholder]="field.placeholder" [(ngModel)]="localForm[field.key]">
+        </label>
+      </div>
+    </section>
+
+    <section class="panel-section" *ngIf="panelActivo === 'locales'">
+      <div class="section-header">
+        <h2>Productos</h2>
+        <button class="small-button" type="button" (click)="agregarProducto()">Agregar</button>
+      </div>
+
+      <div class="repeat-block" *ngFor="let producto of productos; let i = index">
+        <input type="text" placeholder="Nombre" [(ngModel)]="producto.nombre">
+        <textarea rows="2" placeholder="Descripcion" [(ngModel)]="producto.descripcion"></textarea>
+        <input type="number" min="0" step="0.01" placeholder="Precio" [(ngModel)]="producto.precio">
+        <button class="ghost-button" type="button" *ngIf="productos.length > 1" (click)="quitarProducto(i)">Quitar</button>
+      </div>
+    </section>
+
+    <section class="panel-section" *ngIf="panelActivo === 'locales'">
+      <div class="section-header">
+        <h2>Servicios</h2>
+        <button class="small-button" type="button" (click)="agregarServicio()">Agregar</button>
+      </div>
+
+      <div class="repeat-block" *ngFor="let servicio of servicios; let i = index">
+        <input type="text" placeholder="Nombre" [(ngModel)]="servicio.nombre">
+        <textarea rows="2" placeholder="Descripcion" [(ngModel)]="servicio.descripcion"></textarea>
+        <button class="ghost-button" type="button" *ngIf="servicios.length > 1" (click)="quitarServicio(i)">Quitar</button>
+      </div>
+    </section>
+
+    <button class="primary-button" type="button" *ngIf="panelActivo === 'locales' && (esSuperadmin() || localEditandoId)" [disabled]="guardando" (click)="guardarInformacionLocal()">
+      {{ localEditandoId ? 'Actualizar informacion' : 'Guardar local y agregar al mapa' }}
+    </button>
+    <button class="ghost-button full-button" type="button" *ngIf="panelActivo === 'locales' && localEditandoId" (click)="cancelarEdicion()">
+      Cancelar edicion
+    </button>
+    <section class="panel-section" *ngIf="panelActivo === 'componentes'">
+      <div class="section-header">
+        <h2>{{ componenteEditandoId ? 'Editar componente' : 'Crear componente' }}</h2>
+        <button class="small-button" type="button" *ngIf="componenteEditandoId" (click)="resetComponenteForm()">Nuevo</button>
+      </div>
+
+      <label>
+        Local
+        <select [(ngModel)]="componenteForm.local_id">
+          <option *ngIf="esSuperadmin()" [ngValue]="null">Componente general (sin local)</option>
+          <option *ngFor="let local of locales" [ngValue]="local.id">{{ etiquetaLocal(local) }}</option>
+        </select>
+      </label>
+
+      <label>
+        Tipo
+        <select [(ngModel)]="componenteForm.tipo">
+          <option *ngFor="let tipo of tiposComponentes" [value]="tipo">{{ tipo }}</option>
+        </select>
+      </label>
+
+      <label>Nombre<input type="text" [(ngModel)]="componenteForm.nombre"></label>
+      <label>Descripcion<textarea rows="3" [(ngModel)]="componenteForm.descripcion"></textarea></label>
+
+      <div class="field-grid">
+        <label>Costo<input type="number" min="0" step="0.01" [(ngModel)]="componenteForm.costo"></label>
+        <label class="check-label"><input type="checkbox" [(ngModel)]="componenteForm.activo"> Activo</label>
+      </div>
+
+      <label>Fotografia (máximo 10 MB)<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="seleccionarArchivoComponente($event, 'imagen')"></label>
+      <div class="logo-preview" *ngIf="componenteImagenPreview">
+        <img [src]="componenteImagenPreview" alt="Fotografia del componente">
+      </div>
+      <button class="ghost-button full-button" type="button" *ngIf="componenteImagenPreview" (click)="eliminarArchivoComponente('imagen')">Eliminar fotografia</button>
+
+      <label>Icono<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="seleccionarArchivoComponente($event, 'icono')"></label>
+      <div class="logo-preview" *ngIf="componenteIconoPreview">
+        <img [src]="componenteIconoPreview" alt="Icono del componente">
+      </div>
+      <button class="ghost-button full-button" type="button" *ngIf="componenteIconoPreview" (click)="eliminarArchivoComponente('icono')">Eliminar icono</button>
+
+      <button class="primary-button" type="button" (click)="guardarComponente()">Guardar componente</button>
+
+      <div class="list-block" *ngIf="componentes.length">
+        <div class="user-row" *ngFor="let componente of componentes">
+          <button type="button" class="result-item" (click)="editarComponente(componente)">
+            {{ componente.nombre }}
+            <span>{{ componente.tipo }} - {{ componente.local ? etiquetaLocal(componente.local) : 'General' }}</span>
+          </button>
+          <button type="button" class="ghost-button" (click)="agregarComponenteAlCanvas(componente)">Agregar al canvas</button>
+        </div>
+      </div>
+      <button class="danger-button full-button" type="button" *ngIf="componenteEditandoId" (click)="eliminarComponente({ id: componenteEditandoId })">Eliminar componente</button>
+    </section>
+
+    <section class="panel-section" *ngIf="panelActivo === 'usuarios' && esSuperadmin()">
+      <div class="section-header">
+        <h2>{{ usuarioEditandoId ? 'Editar usuario' : 'Crear usuario' }}</h2>
+        <button class="small-button" type="button" *ngIf="usuarioEditandoId" (click)="resetUsuarioForm()">Nuevo</button>
+      </div>
+
+      <label>Nombre<input type="text" [(ngModel)]="usuarioForm.name"></label>
+      <label>Correo<input type="email" [(ngModel)]="usuarioForm.email"></label>
+      <label>Contrasena<input type="password" [(ngModel)]="usuarioForm.password" [placeholder]="usuarioEditandoId ? 'Dejar vacia para conservar' : ''"></label>
+
+      <label>
+        Rol
+        <select [(ngModel)]="usuarioForm.role">
+          <option value="superadmin">Superadmin</option>
+          <option value="admin_local">Administrador de Local</option>
+        </select>
+      </label>
+
+      <label *ngIf="usuarioForm.role === 'admin_local'">
+        Locales asignados
+        <select multiple [(ngModel)]="usuarioForm.local_ids">
+          <option *ngFor="let local of locales" [ngValue]="local.id">{{ etiquetaLocal(local) }}</option>
+        </select>
+      </label>
+
+      <label class="check-label"><input type="checkbox" [(ngModel)]="usuarioForm.status"> Usuario activo</label>
+      <button class="primary-button" type="button" (click)="guardarUsuario()">Guardar usuario</button>
+
+      <div class="list-block" *ngIf="usuarios.length">
+        <div class="user-row" *ngFor="let usuario of usuarios">
+          <button type="button" class="result-item" (click)="editarUsuario(usuario)">
+            {{ usuario.name }}
+            <span>{{ usuario.email }} - {{ usuario.role }} - {{ usuario.status ? 'activo' : 'inactivo' }}</span>
+          </button>
+          <button type="button" class="ghost-button" (click)="desactivarUsuario(usuario)">Desactivar</button>
+          <button type="button" class="danger-button" (click)="eliminarUsuario(usuario)">Eliminar</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-section" *ngIf="panelActivo === 'configuracion' && esSuperadmin()">
+      <div class="section-header">
+        <h2>Personalizacion visual</h2>
+      </div>
+
+      <label>Color de fondo administrativo<input type="color" [(ngModel)]="adminSettings.background_color"></label>
+      <label>Logo institucional<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" (change)="seleccionarAdminLogo($event)"></label>
+
+      <div class="logo-preview" *ngIf="adminLogoPreview">
+        <img [src]="adminLogoPreview" alt="Logo institucional">
+      </div>
+
+      <button class="primary-button" type="button" (click)="guardarAdminSettings()">Guardar configuracion</button>
+    </section>
+
+    <p class="status" *ngIf="mensaje">{{ mensaje }}</p>
+  </aside>
+
+  <!-- ÁREA DE TRABAJO (mapa) -->
+  <main class="map-workspace">
+    <header class="admin-topbar">
+      <div>
+        <img class="topbar-logo" *ngIf="adminLogoPreview" [src]="adminLogoPreview" alt="Logo institucional">
+        <strong>Administrador</strong>
+        <span>Editor del croquis comercial</span>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="help-button" (click)="abrirGuiaAdmin()">Guía de uso</button>
+        <a
+          class="help-button public-view-button"
+          href="https://mapa.worldwidegames.com.mx/"
+          target="_blank"
+          rel="noopener noreferrer">
+          Ver cambios
+        </a>
+        <button type="button" class="toggle-panel-btn" (click)="toggleSidePanel()" title="Mostrar/ocultar panel">
+          {{ sidePanelVisible ? '◀ Ocultar panel' : '▶ Mostrar panel' }}
+        </button>
+        <button type="button" class="logout-button" (click)="cerrarSesion()">Cerrar sesion</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <select [(ngModel)]="localSeleccionado" (ngModelChange)="seleccionarLocalEnCanvas($event)">
+        <option [value]="0">Seleccione un local</option>
+        <option *ngFor="let local of locales" [value]="local.id">
+          {{ etiquetaLocal(local) }}
+        </option>
+      </select>
+
+      <button type="button" (click)="crearLocalExistente()">Agregar local existente</button>
+      <button type="button" *ngIf="esSuperadmin()" (click)="crearEscalera()">Escalera</button>
+      <button type="button" *ngIf="esSuperadmin()" (click)="crearObjetoMapa('escalera_electrica', 'Escalera electrica', '#e67e22', 150, 70)">Escalera electrica</button>
+      <button type="button" *ngIf="esSuperadmin()" (click)="crearObjetoMapa('pasillo', 'Pasillo', '#9aa6b2', 240, 70)">Pasillo</button>
+      <button type="button" *ngIf="esSuperadmin()" (click)="crearObjetoMapa('mesas', 'Zona de mesas', '#58a76f', 180, 120)">Mesas</button>
+      <button type="button" *ngIf="esSuperadmin()" (click)="crearObjetoMapa('maquinitas', 'Maquinitas', '#8f5bd7', 170, 110)">Maquinitas</button>
+      <button type="button" (click)="guardarCanvas()">Guardar canvas</button>
+      <button type="button" (click)="cargarCanvas()">Recargar</button>
+      <button type="button" class="danger-button" (click)="eliminarSeleccionado()">Eliminar seleccionado</button>
+    </div>
+
+    <div class="canvas-wrapper">
+      <canvas id="mapCanvas"></canvas>
+      <ng-container *ngFor="let label of canvasLabels">
+        <div
+          class="canvas-label"
+          [class.selected]="label.selected"
+          [class.local-label]="label.tipo === 'local'"
+          [class.component-label]="label.tipo === 'componente'"
+          [class.feature-label]="label.tipo !== 'local' && label.tipo !== 'componente'"
+          [ngStyle]="label.style">
+          <ng-container *ngIf="label.tipo === 'local'; else nonLocalLabel">
+            <div class="label-center">
+              <div class="label-logo">
+                <img *ngIf="label.logo" [src]="label.logo" [alt]="label.nombre">
+                <span *ngIf="!label.logo">{{ label.nombre?.charAt(0) | uppercase }}</span>
+              </div>
+              <span class="label-name">{{ label.nombre }}</span>
+              <span class="label-number">{{ label.numero }}</span>
+            </div>
+          </ng-container>
+
+          <ng-template #nonLocalLabel>
+            <img class="label-image" *ngIf="label.imagen" [src]="label.imagen" [alt]="label.nombre">
+            <span class="label-name">{{ label.nombre }}</span>
+            <small *ngIf="label.descripcion">{{ label.descripcion }}</small>
+          </ng-template>
+        </div>
+      </ng-container>
+    </div>
+  </main>
+
+  <div class="admin-guide-backdrop" *ngIf="mostrarGuiaAdmin" (click)="cerrarGuiaAdmin()">
+    <article class="admin-guide" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+      <header class="admin-guide-head">
+        <div>
+          <span>Ayuda inicial</span>
+          <h2 id="guide-title">Guía del panel administrativo</h2>
+          <p>Esta guía se muestra automáticamente una sola vez por usuario. Después puede abrirla desde “Guía de uso”.</p>
+        </div>
+        <button type="button" (click)="cerrarGuiaAdmin()" aria-label="Cerrar guía">✕</button>
+      </header>
+
+      <div class="admin-guide-content">
+        <section>
+          <h3>1. Navegación general</h3>
+          <p>Las pestañas de la izquierda separan Locales, Componentes, Usuarios y Configuración. “Ocultar panel” amplía el mapa; vuelva a mostrarlo para editar información. El mensaje inferior del panel confirma cada operación o muestra el error recibido.</p>
+        </section>
+
+        <section>
+          <h3>2. Crear y editar locales</h3>
+          <ol>
+            <li>Abra <strong>Locales</strong> y capture nombre, número, medidas, color, contacto, horario y redes.</li>
+            <li>Agregue productos y servicios con sus botones correspondientes.</li>
+            <li>Pulse <strong>Guardar local y agregar al mapa</strong>. Para modificar uno existente, selecciónelo y pulse <strong>Editar</strong>.</li>
+            <li>También puede elegir un local en la barra superior y usar <strong>Agregar local existente</strong> si aún no aparece en el canvas.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>3. Componentes</h3>
+          <p>Un componente puede pertenecer a un local o ser general. Los asociados siempre permanecen dentro de su local; los generales pueden colocarse libremente. Capture nombre, tipo, costo y descripción, y suba fotografía o icono de hasta 10 MB. Después de guardarlo, pulse <strong>Agregar al canvas</strong>. Arrastre o escale el objeto y guarde el canvas.</p>
+        </section>
+
+        <section>
+          <h3>4. Uso del canvas</h3>
+          <ul>
+            <li>Haga clic en un objeto para seleccionarlo; arrástrelo para moverlo y use sus controles para escalarlo o rotarlo.</li>
+            <li>Las flechas mueven el objeto un píxel; <strong>Shift + flecha</strong> lo mueve diez.</li>
+            <li>Las líneas de color sirven como guías temporales de alineación.</li>
+            <li><strong>Guardar canvas</strong> conserva la distribución completa. <strong>Recargar</strong> vuelve a consultar los datos guardados.</li>
+            <li><strong>Eliminar seleccionado</strong> borra solo el objeto del mapa; eliminar un componente desde su apartado borra también su registro.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>5. Buscar y comprobar</h3>
+          <p>El buscador global localiza locales, productos, servicios y componentes. Antes de terminar, guarde el canvas y revise la vista pública para confirmar tamaños, iconos, datos y enlaces.</p>
+        </section>
+
+        <section *ngIf="esSuperadmin()">
+          <h3>6. Usuarios y permisos</h3>
+          <p>El superadministrador puede crear usuarios y asignar uno o varios locales al rol Administrador de Local. Ese rol solo administra sus locales. Los componentes generales, usuarios y configuración institucional quedan reservados al superadministrador.</p>
+        </section>
+
+        <section *ngIf="esSuperadmin()">
+          <h3>7. Configuración visual</h3>
+          <p>En <strong>Configuración</strong> puede cambiar el logo institucional y el color de fondo. Ambos se reflejan en la vista pública. Pulse siempre <strong>Guardar configuración</strong>.</p>
+        </section>
+
+        <section>
+          <h3>8. Seguridad de sesión</h3>
+          <p>La sesión se cierra después de 20 minutos sin actividad. El sistema redirige al acceso y muestra un aviso; los cambios no guardados se pierden, por lo que conviene guardar el canvas regularmente.</p>
+        </section>
+      </div>
+
+      <footer class="admin-guide-footer">
+        <button type="button" class="primary-button" (click)="cerrarGuiaAdmin()">Entendido, comenzar</button>
+      </footer>
+    </article>
+  </div>
+</div>

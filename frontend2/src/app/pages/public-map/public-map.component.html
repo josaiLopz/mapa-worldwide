@@ -1,0 +1,556 @@
+<!-- Guía persistente: en celular vertical siempre se oculta el mapa y se pide girar (sin usar
+     rotación automática de hardware, solo CSS). A diferencia de mostrarHorizontalHint (que es
+     parte del onboarding y solo aparece una vez), esta se muestra cada vez que el dispositivo
+     esté en vertical. -->
+     <div class="rotate-required-overlay">
+      <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="6" y="3" width="12" height="18" rx="2.5"></rect>
+        <line x1="10" y1="19" x2="14" y2="19"></line>
+      </svg>
+      <strong>Gira tu teléfono</strong>
+      <p>Este mapa se ve mejor en horizontal. Rota tu pantalla para explorarlo.</p>
+    </div>
+    
+    <div
+      class="page"
+      [class.header-hidden]="!mostrarBarraBusqueda"
+      [class.zoomed-map]="zoomActivo"
+      [class.mobile-map]="esVistaCelular"
+      [style.--public-background]="adminSettings.background_color">
+    
+      <!-- HEADER -->
+      <header class="header" *ngIf="mostrarBarraBusqueda">
+        <div class="header-branding">
+          <img class="header-logo" *ngIf="adminLogo" [src]="adminLogo" alt="Logo institucional">
+          <div class="header-left">
+            <h1>Mapa comercial</h1>
+            <p>Busca locales, productos o servicios dentro del mapa.</p>
+          </div>
+        </div>
+        <div class="search-row">
+          <form class="search-box" (ngSubmit)="buscar()">
+            <input
+              type="search"
+              class="search-input"
+              placeholder="Buscar producto, servicio o local…"
+              name="busqueda"
+              [(ngModel)]="busqueda"
+              autocomplete="off">
+            <button type="submit" class="btn-primary">Buscar</button>
+            <button type="button" class="btn-ghost" (click)="limpiarBusqueda()">Limpiar</button>
+          </form>
+        </div>
+      </header>
+    
+      <!-- BOTÓN FLOTANTE BUSCADOR -->
+      <button 
+        class="fab-search" 
+        [class.active]="mostrarBarraBusqueda"
+        (click)="toggleBarraBusqueda()" 
+        [title]="mostrarBarraBusqueda ? 'Cerrar buscador' : 'Abrir buscador'">
+        <svg *ngIf="!mostrarBarraBusqueda" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg *ngIf="mostrarBarraBusqueda" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    
+      <button
+        class="fab-navigator"
+        [class.active]="mostrarNavegadorMapa"
+        type="button"
+        (click)="toggleNavegadorMapa()"
+        title="Navegador del mapa">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>
+      </button>
+    
+      <div class="map-navigator" *ngIf="mostrarNavegadorMapa">
+        <div
+          class="navigator-map"
+          (pointerdown)="iniciarArrastreNavegador($event)"
+          (pointermove)="arrastrarNavegador($event)"
+          (pointerup)="terminarArrastreNavegador($event)"
+          (pointercancel)="terminarArrastreNavegador($event)">
+          <div class="navigator-map-inner"></div>
+          <div class="navigator-window" [ngStyle]="navegadorVentanaEstilo()"></div>
+        </div>
+        <div class="navigator-actions">
+          <strong>{{ zoomPorcentaje }}%</strong>
+          <button type="button" (click)="acercarMapa()" aria-label="Acercar mapa">+</button>
+          <button type="button" (click)="alejarMapa()" aria-label="Alejar mapa">-</button>
+          <button type="button" (click)="restablecerZoomMapa()">100%</button>
+        </div>
+      </div>
+    
+    
+      <!-- SEARCH SUMMARY (chips) -->
+      <div class="summary" *ngIf="resultados && mostrarBarraBusqueda">
+        <div class="summary-label" *ngIf="tieneResultados()">Coincidencias encontradas</div>
+        <div class="summary-label" *ngIf="!tieneResultados()">Sin coincidencias para "{{ busqueda }}"</div>
+    
+        <div class="chips">
+          <ng-container *ngFor="let objeto of objetos">
+            <div
+              class="chip"
+              *ngIf="objeto.tipo === 'local' && objeto.local_id && esLocalResaltado(objeto.local_id)"
+              (click)="abrirLocal(objeto.local)">
+              <div class="avatar">
+                <img *ngIf="objeto.local.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                <span *ngIf="!objeto.local.logo">{{ objeto.local.nombre?.charAt(0) | uppercase }}</span>
+              </div>
+              <div>
+                <div class="chip-name">{{ etiquetaLocal(objeto.local) }}</div>
+                <div class="chip-tag">{{ tagsLocal(objeto.local_id)[0] }}</div>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+    
+      <!-- LEGEND -->
+      <div class="legend">
+        <span><span class="dot" style="background:#ffffff;border:1px solid #a8b0ba"></span> Local</span>
+        <span><span class="dot" style="background:#747b84;border-radius:0"></span> Escalera</span>
+        <span><span class="dot" style="background:#f2a900"></span> Escalera eléctrica</span>
+        <span><span class="dot" style="background:#edf1f5;border:1px solid #aab2bd"></span> Pasillo</span>
+        <span><span class="dot" style="background:#7db7f2"></span> Mesas</span>
+        <span><span class="dot" style="background:#b8a7ff"></span> Maquinitas</span>
+    
+        <!-- Toggle 2D / 3D -->
+        <div class="toggle3d" style="margin-left:auto;">
+          <button type="button" [class.active]="!modo3d" (click)="modo3d && toggleModo3d()">2D</button>
+          <button type="button" [class.active]="modo3d" (click)="!modo3d && toggleModo3d()">3D</button>
+        </div>
+      </div>
+    
+      <!-- MAP AREA -->
+      <!-- Barra "Vista del mapa" quitada: era puramente decorativa (sin función) y le robaba
+           espacio vertical real al mapa, contribuyendo al corte de abajo. -->
+      <main class="map-area">
+    
+        <!-- Horizontal recommendation overlay -->
+        <div class="horizontal-hint-overlay" *ngIf="mostrarHorizontalHint && esVistaCelular">
+          <div class="horizontal-hint-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw"><path d="M3 12a9 9 0 1 0 9-9V3"/><path d="M6 6l-3 3-3-3"/></svg>
+            <h3>Para una mejor experiencia, gira tu dispositivo horizontalmente.</h3>
+            <p>El mapa está diseñado para verse mejor en orientación horizontal.</p>
+          </div>
+        </div>
+    
+        <!-- Pinch-to-zoom hint overlay -->
+        <div class="pinch-hint-overlay" *ngIf="mostrarPinchHint && esVistaCelular">
+          <div class="pinch-hint-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 8 L4 4 M4 4 L4 8 M4 4 L8 4"/>
+              <path d="M16 16 L20 20 M20 20 L20 16 M20 20 L16 20"/>
+            </svg>
+            <h3>Pellizca para acercar o alejar</h3>
+            <p>Usa dos dedos para hacer zoom en el mapa y ver mejor cada local.</p>
+          </div>
+        </div>
+    
+        <!-- Guía de funciones nuevas: 100% independiente del onboarding de arriba, no lo modifica -->
+        <div class="guia-nueva-overlay" *ngIf="mostrarGuiaNueva">
+          <div class="guia-nueva-card">
+            <div class="guia-nueva-progreso">Paso {{ guiaPasoActual + 1 }} de {{ guiaPasos.length }}</div>
+            <h3>{{ guiaPasos[guiaPasoActual].titulo }}</h3>
+            <p>{{ guiaPasos[guiaPasoActual].texto }}</p>
+            <div class="guia-visual" *ngIf="esVistaCelular" [ngClass]="claseVisualGuia()">
+              <div class="guia-phone">
+                <div class="guia-map-plane">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="guia-cube"></div>
+                <div class="guia-compass">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l5 20-5-4-5 4 5-20z"/></svg>
+                </div>
+                <div class="guia-finger one"></div>
+                <div class="guia-finger two"></div>
+                <div class="guia-route"></div>
+                <div class="guia-info-card"></div>
+              </div>
+            </div>
+            <div class="guia-nueva-dots">
+              <span *ngFor="let paso of guiaPasos; let i = index" [class.activo]="i === guiaPasoActual"></span>
+            </div>
+            <div class="guia-nueva-acciones">
+              <button type="button" class="guia-btn-omitir" (click)="cerrarGuiaNueva()">Omitir</button>
+              <button type="button" class="guia-btn-atras" *ngIf="guiaPasoActual > 0" (click)="anteriorPasoGuia()">Atrás</button>
+              <button type="button" class="guia-btn-siguiente" (click)="siguientePasoGuia()">
+                {{ guiaPasoActual === guiaPasos.length - 1 ? 'Entendido' : 'Siguiente' }}
+              </button>
+            </div>
+          </div>
+        </div>
+    
+        <div class="canvas-stage-wrap" [class.modo-3d]="modo3d" (wheel)="onWheelZoom($event)">
+          <div
+            class="canvas-stage"
+            [style.width.px]="stageWidth"
+            [style.height.px]="stageHeight">
+    
+            <!-- TILT LAYER: inclina en 3D y permite rotar arrastrando (orbit). No toca el pan/zoom, que sigue viviendo en .zoom-layer -->
+            <div
+              class="tilt-layer"
+              [class.orbitando]="orbiting"
+              [ngStyle]="estiloTiltLayer()"
+              (pointerdown)="iniciarOrbita($event)">
+    
+              <!-- ZOOM LAYER: envuelve canvas + labels para sincronizar el pinch-to-zoom -->
+              <div class="zoom-layer" #zoomLayer>
+    
+                <canvas id="publicMapCanvas"></canvas>
+    
+                <!-- Labels y etiquetas flotantes (SOLO en 2D; en 3D los locales/componentes se muestran como cubo) -->
+                <ng-container *ngFor="let objeto of objetos; let i = index">
+    
+                  <!-- Tag flotante del resultado de búsqueda, independiente del contenido del local -->
+                  <div
+                    class="tag-wrap highlighted-search-tag"
+                    *ngIf="objeto.tipo === 'local' && objeto.local_id && esLocalResaltado(objeto.local_id)"
+                    [ngStyle]="estilosTagEtiqueta(objeto)"
+                    (click)="$event.stopPropagation(); objeto.local && abrirLocal(objeto.local)">
+                    <div class="tag-pill">
+                      <div class="tag-av">
+                        <img *ngIf="objeto.local?.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                        <span *ngIf="!objeto.local?.logo">{{ (objeto.local?.nombre || objeto.nombre || '?').charAt(0) | uppercase }}</span>
+                      </div>
+                      <div class="tag-info">
+                        <span class="tag-name">{{ etiquetaLocal(objeto.local) || objeto.nombre }}</span>
+                        <span class="tag-match">{{ tagsLocal(objeto.local_id)[0] }}</span>
+                      </div>
+                    </div>
+                    <div class="hilo"></div>
+                  </div>
+
+                  <!-- Label del local resaltado: mantiene logo, nombre y número dentro del local -->
+                  <button
+                    type="button"
+                    class="map-label local-label hl"
+                    *ngIf="objeto.tipo === 'local' && objeto.local_id && esLocalResaltado(objeto.local_id)"
+                    [ngStyle]="estilosObjeto(objeto)"
+                    (click)="objeto.local && abrirLocal(objeto.local)">
+                    <div class="local-center">
+                      <div class="local-icon">
+                        <img *ngIf="objeto.local?.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                        <span *ngIf="!objeto.local?.logo">{{ objeto.local?.nombre?.charAt(0) | uppercase }}</span>
+                      </div>
+                      <div class="local-name">
+                        {{ nombreLocal(objeto.local, objeto.nombre) }}
+                      </div>
+                      <div class="local-number">
+                        {{ numeroLocal(objeto.local) }}
+                      </div>
+                    </div>
+                  </button>
+    
+                  <!-- Label normal (locales no resaltados u otros elementos) -->
+                  <button
+                    type="button"
+                    class="map-label"
+                    [class.local-label]="objeto.tipo === 'local'"
+                    [class.feature-label]="objeto.tipo !== 'local'"
+                    [class.component-label]="objeto.tipo === 'componente'"
+                    [class.hl]="false"
+                    [ngStyle]="estilosObjeto(objeto)"
+                   *ngIf="!(objeto.tipo === 'local' && objeto.local_id && esLocalResaltado(objeto.local_id))"
+                    (click)="abrirObjeto(objeto)">
+    
+                    <!-- Para locales -->
+                    <ng-container *ngIf="objeto.tipo === 'local'">
+                      <div class="local-center">
+                        <div class="local-icon">
+                          <img *ngIf="objeto.local?.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                          <span *ngIf="!objeto.local?.logo">{{ objeto.local?.nombre?.charAt(0) | uppercase }}</span>
+                        </div>
+                        <div class="local-name">
+                          {{ nombreLocal(objeto.local, objeto.nombre) }}
+                        </div>
+                        <div class="local-number">
+                          {{ numeroLocal(objeto.local) }}
+                        </div>
+                      </div>
+                    </ng-container>
+    
+                    <!-- Para elementos no locales -->
+                    <ng-container *ngIf="objeto.tipo !== 'local'">
+                      <img
+                        class="component-image"
+                        *ngIf="objeto.tipo === 'componente' && (componenteDeObjeto(objeto)?.icono || componenteDeObjeto(objeto)?.imagen)"
+                        [src]="logoUrl(componenteDeObjeto(objeto)?.icono || componenteDeObjeto(objeto)?.imagen)"
+                        [alt]="componenteDeObjeto(objeto)?.nombre || objeto.nombre">
+                      <div
+                        class="feature-icon"
+                        *ngIf="objeto.tipo !== 'componente'"
+                        [style.background-color]="colorPorTipo(objeto.tipo)">
+                      </div>
+                      <div class="feature-name">{{ componenteDeObjeto(objeto)?.nombre || objeto.nombre || etiquetaTipo(objeto.tipo) }}</div>
+                      <div class="feature-description" *ngIf="objeto.tipo === 'componente' && componenteDeObjeto(objeto)?.descripcion">
+                        {{ componenteDeObjeto(objeto)?.descripcion }}
+                      </div>
+                    </ng-container>
+                  </button>
+    
+                  <!-- Onboarding pulse (solo para el primer local, y solo en 2D) -->
+                  <div
+                    class="onboarding-pulse"
+                    *ngIf="mostrarOnboarding && objeto.tipo === 'local' && i === primerLocalIndex && !modo3d"
+                    [ngStyle]="estilosObjeto(objeto)">
+                    <div class="onboarding-hint">Toca un local para ver info</div>
+                  </div>
+    
+                </ng-container>
+    
+                <!-- CAPA DE CUBOS 3D: locales y componentes, mismas coordenadas que arriba pero extruidas.
+                     El canvas de Fabric sigue plano de fondo (no se toca su render 2D). -->
+                <div class="cube-layer" *ngIf="modo3d">
+                  <ng-container *ngFor="let objeto of objetos">
+                    <div
+                      class="cube3d"
+                      *ngIf="esCubo(objeto)"
+                      [class.selected]="objeto.tipo === 'local' && localActivo && objeto.local && objeto.local.id === localActivo.id"
+                      [ngStyle]="estilosCubo(objeto)"
+                      (click)="onCubeClick(objeto)">
+    
+                      <!-- Área de clic confiable: un rectángulo plano (no fragmentado en caras 3D),
+                           así el clic siempre registra sin importar desde qué ángulo se vea el cubo. -->
+                      <div
+                        class="cube-hit"
+                        (click)="$event.stopPropagation(); onCubeClick(objeto)"></div>
+    
+                      <div class="riser">
+                        <div class="box">
+                          <div class="face front"></div>
+                          <div class="face back"></div>
+                          <div class="face left"></div>
+                          <div class="face right"></div>
+                          <div class="face top">
+                            <div class="cube-icon">
+                              <img *ngIf="objeto.tipo === 'local' && objeto.local?.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                              <img *ngIf="objeto.tipo === 'componente' && (componenteDeObjeto(objeto)?.icono || componenteDeObjeto(objeto)?.imagen)" [src]="logoUrl(componenteDeObjeto(objeto)?.icono || componenteDeObjeto(objeto)?.imagen)" [alt]="componenteDeObjeto(objeto)?.nombre">
+                              <span *ngIf="objeto.tipo === 'local' && !objeto.local?.logo">{{ objeto.local?.nombre?.charAt(0) | uppercase }}</span>
+                              <span *ngIf="objeto.tipo === 'componente' && !(componenteDeObjeto(objeto)?.icono || componenteDeObjeto(objeto)?.imagen)">{{ (componenteDeObjeto(objeto)?.nombre || objeto.nombre || '?').charAt(0) | uppercase }}</span>
+                            </div>
+                            <div class="cube-name">{{ objeto.tipo === 'local' ? nombreLocal(objeto.local, objeto.nombre) : (componenteDeObjeto(objeto)?.nombre || objeto.nombre) }}</div>
+                            <div class="cube-number" *ngIf="objeto.tipo === 'local'">{{ numeroLocal(objeto.local) }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </ng-container>
+                </div>
+
+                <div class="cube-tag-layer" *ngIf="modo3d">
+                  <ng-container *ngFor="let objeto of objetos">
+                    <div
+                      class="tag-wrap cube-search-tag"
+                      *ngIf="objeto.tipo === 'local' && objeto.local_id && esLocalResaltado(objeto.local_id)"
+                      [ngStyle]="estilosTagCubo3d(objeto)"
+                      (click)="$event.stopPropagation(); objeto.local && abrirLocal(objeto.local)">
+                      <div class="cube-search-tag-face">
+                        <div class="tag-pill">
+                          <div class="tag-av">
+                            <img *ngIf="objeto.local?.logo" [src]="logoUrl(objeto.local.logo)" [alt]="objeto.local.nombre">
+                            <span *ngIf="!objeto.local?.logo">{{ (objeto.local?.nombre || objeto.nombre || '?').charAt(0) | uppercase }}</span>
+                          </div>
+                          <div class="tag-info">
+                            <span class="tag-name">{{ etiquetaLocal(objeto.local) || objeto.nombre }}</span>
+                            <span class="tag-match">{{ tagsLocal(objeto.local_id)[0] }}</span>
+                          </div>
+                        </div>
+                        <div class="hilo"></div>
+                      </div>
+                    </div>
+                  </ng-container>
+                </div>
+    
+                <!-- Marcador visible de la entrada real (siempre presente, 2D y 3D) -->
+                <div class="entrada-marker" [ngStyle]="estilosEntrada()">
+                  <div class="entrada-pin"></div>
+                  <div class="entrada-label">Entrada</div>
+                </div>
+    
+                <!-- Ruta "Cómo llegar": vive en el mismo .zoom-layer, así se mueve/rota junto con el mapa -->
+                <svg class="ruta-svg" *ngIf="modo3d && rutaPathD">
+                  <path #rutaPath [attr.d]="rutaPathD"></path>
+                </svg>
+                <div
+                  class="ruta-walker"
+                  *ngIf="walkerVisible"
+                  [style.left.px]="walkerPos.x"
+                  [style.top.px]="walkerPos.y"></div>
+    
+              </div>
+              <!-- /zoom-layer -->
+    
+            </div>
+            <!-- /tilt-layer -->
+    
+          </div>
+        </div>
+    
+        <!-- Controles de cámara 3D: fuera de .canvas-stage-wrap a propósito — cualquier ancestro
+             con "perspective" (como .canvas-stage en modo 3D) se vuelve el punto de referencia
+             para position:fixed, así que había que sacarlos de ahí para que se anclen a la
+             pantalla real, igual que los botones amarillos de buscar/navegador. -->
+        <div class="map-controls-3d" *ngIf="modo3d">
+          <button type="button" class="ctrl-btn compass-btn" (click)="restablecerCompas()" (pointerdown)="iniciarRotacionCompas($event)" title="Arrastra horizontal para girar y vertical para inclinar · clic para restablecer norte">
+            <svg width="16" height="16" viewBox="0 0 24 24" [style.transform]="'rotate(' + (-rot3dY) + 'deg)'">
+              <polygon points="12,3 15,12 12,21 9,12" fill="#e6392c"/>
+            </svg>
+          </button>
+          <button type="button" class="ctrl-btn" (click)="acercarMapa()" title="Acercar">＋</button>
+          <button type="button" class="ctrl-btn" (click)="alejarMapa()" title="Alejar">－</button>
+          <button type="button" class="ctrl-btn" (click)="restablecerVista3d()" title="Restablecer vista">⟳</button>
+          <button type="button" class="ctrl-btn" *ngIf="rutaActiva" (click)="cancelarRuta()" title="Cancelar ruta">✕</button>
+        </div>
+      </main>
+    
+      <!-- MODAL -->
+      <ng-container *ngIf="localActivo">
+        <div class="modal-wrap" (click)="cerrarModal()">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <!-- Cabecera -->
+            <div class="modal-head">
+              <div class="modal-logo">
+                <img *ngIf="localActivo.logo" [src]="logoUrl(localActivo.logo)" [alt]="localActivo.nombre">
+                <span *ngIf="!localActivo.logo">{{ localActivo.nombre?.charAt(0) | uppercase }}</span>
+              </div>
+              <div>
+                <h2>{{ etiquetaLocal(localActivo) }}</h2>
+                <p class="modal-horario" *ngIf="localActivo.horario">{{ localActivo.horario }}</p>
+                <p class="modal-description" *ngIf="localActivo.descripcion">{{ localActivo.descripcion }}</p>
+                <button type="button" class="btn-como-llegar" (click)="comoLlegar()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 21s7-4.4 7-11a7 7 0 1 0-14 0c0 6.6 7 11 7 11Z"/>
+                    <circle cx="12" cy="10" r="2.4"/>
+                  </svg>
+                  Cómo llegar aquí
+                </button>
+              </div>
+            </div>
+    
+            <!-- Componentes -->
+            <div *ngIf="localActivo.componentes?.length">
+              <div class="section-label">Componentes</div>
+              <div class="cards-row">
+                <div class="info-card component-card" *ngFor="let componente of localActivo.componentes">
+                  <button
+                    type="button"
+                    class="component-photo-button"
+                    *ngIf="componente.imagen || componente.icono"
+                    (click)="ampliarImagen(componente.imagen || componente.icono, componente.nombre)">
+                    <img [src]="logoUrl(componente.imagen || componente.icono)" [alt]="componente.nombre">
+                  </button>
+                  <strong>{{ componente.nombre }}</strong>
+                  <p *ngIf="componente.descripcion">{{ componente.descripcion }}</p>
+                  <span *ngIf="componente.costo">$ {{ componente.costo }}</span>
+                </div>
+              </div>
+            </div>
+    
+            <!-- Productos -->
+            <div *ngIf="localActivo.productos?.length">
+              <div class="section-label">Productos</div>
+              <div class="cards-row">
+                <div class="info-card" *ngFor="let producto of localActivo.productos">
+                  <strong>{{ producto.nombre }}</strong>
+                  <p *ngIf="producto.descripcion">{{ producto.descripcion }}</p>
+                  <span *ngIf="producto.precio">$ {{ producto.precio }}</span>
+                </div>
+              </div>
+            </div>
+    
+            <!-- Servicios -->
+            <div *ngIf="localActivo.servicios?.length">
+              <div class="section-label">Servicios</div>
+              <div class="cards-row">
+                <div class="info-card" *ngFor="let servicio of localActivo.servicios">
+                  <strong>{{ servicio.nombre }}</strong>
+                  <p *ngIf="servicio.descripcion">{{ servicio.descripcion }}</p>
+                </div>
+              </div>
+            </div>
+    
+            <!-- Contacto y redes -->
+            <div>
+              <div class="section-label">Contacto y redes</div>
+              <div class="pill-row" style="margin-bottom:8px">
+                <a *ngIf="localActivo.telefono" class="contact-pill" [href]="'tel:' + localActivo.telefono">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.92.33 1.82.63 2.68a2 2 0 0 1-.45 2.11L8.09 9.72a16 16 0 0 0 6.19 6.19l1.21-1.21a2 2 0 0 1 2.11-.45c.86.3 1.76.51 2.68.63A2 2 0 0 1 22 16.92Z"/>
+                  </svg>
+                  {{ localActivo.telefono }}
+                </a>
+                <a *ngIf="localActivo.correo" class="contact-pill" [href]="'mailto:' + localActivo.correo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="14" rx="2"/>
+                    <path d="m3 7 9 6 9-6"/>
+                  </svg>
+                  {{ localActivo.correo }}
+                </a>
+              </div>
+              <div class="socials">
+    
+                <a *ngIf="localActivo.whatsapp" class="soc wa" [href]="'https://wa.me/' + limpiarTelefono(localActivo.whatsapp)" target="_blank" rel="noopener" title="WhatsApp">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.87.5 3.62 1.44 5.13L2 22l5.13-1.55a9.86 9.86 0 0 0 4.91 1.31h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.83 9.83 0 0 0 12.04 2zm0 1.8c2.18 0 4.23.85 5.77 2.4a8.1 8.1 0 0 1 2.39 5.71c0 4.48-3.65 8.13-8.15 8.13a8.1 8.1 0 0 1-4.13-1.13l-.3-.17-3.04.92.92-2.96-.2-.32a8.07 8.07 0 0 1-1.25-4.36C4.05 7.45 7.6 3.8 12.04 3.8zm-3.4 4.4c-.18 0-.47.07-.66.32-.2.25-.78.76-.78 1.86 0 1.1.8 2.16 1.92 3.45 1.13 1.3 2.5 2.27 3.97 2.83.4.16.7.25.97.25.5 0 1.16-.32 1.34-1.04.18-.7.18-1.3.13-1.4-.05-.1-.2-.16-.4-.27-.2-.1-1.18-.58-1.36-.65-.18-.07-.32-.1-.45.1-.13.2-.5.65-.62.78-.12.13-.24.14-.44.05-.6-.24-1.6-.7-2.45-1.7-.4-.5-.65-.95-.78-1.2-.13-.25-.01-.4.1-.5.12-.1.27-.27.4-.4.13-.13.18-.23.27-.38.08-.15.04-.3-.03-.43-.07-.13-.6-1.43-.8-1.9-.15-.35-.3-.4-.45-.41z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.sitio_web" class="soc web" [href]="normalizarUrl(localActivo.sitio_web)" target="_blank" rel="noopener" title="Sitio web">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 0 20a15.3 15.3 0 0 1 0-20z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.facebook" class="soc fb" [href]="normalizarUrl(localActivo.facebook)" target="_blank" rel="noopener" title="Facebook">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.16 8.44 9.94v-7.03H7.9v-2.91h2.54V9.83c0-2.5 1.49-3.89 3.78-3.89 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.87h2.78l-.45 2.91h-2.33V22c4.78-.78 8.44-4.94 8.44-9.94z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.instagram" class="soc ig" [href]="normalizarUrl(localActivo.instagram)" target="_blank" rel="noopener" title="Instagram">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.tiktok" class="soc tk" [href]="normalizarUrl(localActivo.tiktok)" target="_blank" rel="noopener" title="TikTok">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M16.5 2c.3 2.1 1.7 3.7 3.5 4.1v2.7c-1.3.1-2.5-.3-3.5-1v6.4c0 2.7-2.2 4.9-4.9 4.9S6.7 16.9 6.7 14.2 8.9 9.3 11.6 9.3c.3 0 .6 0 .9.07v2.7a2.2 2.2 0 0 0-.9-.2 2.4 2.4 0 1 0 2.4 2.4V2h2.5z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.youtube" class="soc yt" [href]="normalizarUrl(localActivo.youtube)" target="_blank" rel="noopener" title="YouTube">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M21.6 7.2s-.2-1.5-.8-2.1c-.8-.8-1.7-.8-2.1-.9C15.8 4 12 4 12 4s-3.8 0-6.7.2c-.4.1-1.3.1-2.1.9-.6.6-.8 2.1-.8 2.1S2.2 9 2.2 10.9v1.8c0 1.9.2 3.7.2 3.7s.2 1.5.8 2.1c.8.8 1.9.8 2.4.9 1.7.2 6.4.2 6.4.2s3.8 0 6.7-.3c.4 0 1.3-.1 2.1-.9.6-.6.8-2.1.8-2.1s.2-1.8.2-3.7v-1.8c0-1.8-.2-3.6-.2-3.6zM10.1 14.8V8.6l5.8 3.1-5.8 3.1z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.x || localActivo.twitter" class="soc x" [href]="normalizarUrl(localActivo.x || localActivo.twitter)" target="_blank" rel="noopener" title="X">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M18.9 2h3.1l-6.8 7.8 8 12.2h-6.3l-4.9-7-5.7 7H3.2l7.3-8.5L2.8 2h6.4l4.4 6.4L18.9 2zm-1.1 17.9h1.7L8.3 4H6.5l11.3 15.9z"/>
+                  </svg>
+                </a>
+    
+                <a *ngIf="localActivo.telegram" class="soc tg" [href]="normalizarUrl(localActivo.telegram)" target="_blank" rel="noopener" title="Telegram">
+                  <svg viewBox="0 0 24 24" fill="#fff">
+                    <path d="M21.9 4.6 18.6 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.5 1 12c-1.1-.3-1.1-1.1.2-1.6L20.6 3c.9-.3 1.7.2 1.3 1.6z"/>
+                  </svg>
+                </a>
+    
+              </div>
+            </div>
+    
+            <button class="close-modal" (click)="cerrarModal()">✕ Cerrar</button>
+          </div>
+        </div>
+      </ng-container>
+    
+      <div class="image-viewer" *ngIf="imagenAmpliada" (click)="cerrarImagenAmpliada()">
+        <button type="button" class="image-viewer-close" (click)="cerrarImagenAmpliada()" aria-label="Cerrar imagen">✕</button>
+        <img [src]="imagenAmpliada" [alt]="imagenAmpliadaAlt" (click)="$event.stopPropagation()">
+      </div>
+    </div>

@@ -1,0 +1,230 @@
+.register-page {
+  --admin-dark: #0f1111;
+  --admin-panel: #181a1a;
+  --admin-line: #4f4632;
+  --admin-text: #e2e2e2;
+  --admin-muted: #d4c5ab;
+  --admin-accent: #ffc107;
+  --admin-accent-hover: #ffd34d;
+
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--admin-background, #0c0f0f);
+  color: var(--admin-text);
+  font-family: inherit;
+}
+
+.register-topbar {
+  min-height: 54px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+  background: var(--admin-dark);
+  border-bottom: 1px solid #252525;
+}
+
+.register-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-right: 1px solid #2f2a20;
+}
+
+.register-title strong {
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.register-title i {
+  color: #5a5348;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.register-title span {
+  max-width: 230px;
+  color: #ffe2a5;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.register-topbar > a {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  background: var(--admin-accent);
+  color: #151515;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: .03em;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.register-topbar > a:hover {
+  background: var(--admin-accent-hover);
+}
+
+.register-card {
+  width: min(480px, calc(100% - 32px));
+  align-self: center;
+  justify-self: center;
+  padding: 26px;
+  background: rgba(24, 26, 26, .98);
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .38);
+}
+
+.register-head {
+  margin-bottom: 20px;
+}
+
+.register-logo {
+  display: block;
+  max-width: 190px;
+  max-height: 72px;
+  object-fit: contain;
+  margin: 0 auto 16px;
+}
+
+.register-head span {
+  color: var(--admin-accent);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.register-head h1 {
+  margin: 6px 0 0;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.register-head p {
+  margin: 8px 0 0;
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+form {
+  display: grid;
+  gap: 13px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--admin-muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+input,
+select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  padding: 11px 12px;
+  background: #121414;
+  color: var(--admin-text);
+  font: inherit;
+  outline: none;
+}
+
+select {
+  cursor: pointer;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, .18);
+}
+
+button {
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 13px;
+  background: var(--admin-accent);
+  color: #151515;
+  font: inherit;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+button:hover {
+  background: var(--admin-accent-hover);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+
+.status {
+  margin: 12px 0 0;
+  color: #ffbab3;
+  font-weight: 800;
+}
+
+.register-card > a {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--admin-accent);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.register-card > a:hover {
+  color: var(--admin-accent-hover);
+}
+
+@media (max-width: 640px) {
+  .register-topbar {
+    flex-direction: column;
+  }
+
+  .register-title {
+    min-height: 54px;
+    padding: 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid #252525;
+  }
+
+  .register-title strong {
+    font-size: 18px;
+  }
+
+  .register-title span {
+    font-size: 12px;
+  }
+
+  .register-topbar > a {
+    min-height: 44px;
+  }
+
+  .register-card {
+    width: min(100% - 20px, 480px);
+    padding: 20px;
+  }
+}

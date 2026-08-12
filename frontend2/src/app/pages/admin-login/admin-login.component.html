@@ -1,0 +1,73 @@
+<main class="auth-shell" [style.--admin-background]="adminSettings.background_color">
+  <header class="auth-topbar">
+    <div class="auth-title">
+      <strong>Administrador</strong>
+      <i>/</i>
+      <span>Editor del croquis comercial</span>
+    </div>
+    <a class="auth-topbar-link" href="/admin/registro">Registro de local</a>
+  </header>
+
+  <section class="auth-panel">
+    <div class="auth-heading">
+      <img class="auth-logo" *ngIf="adminLogoPreview" [src]="adminLogoPreview" alt="Logo institucional">
+      <span>Acceso privado</span>
+      <h1>Iniciar sesion</h1>
+      <p>Administra locales, componentes y configuracion del croquis.</p>
+    </div>
+
+    <div class="mode-tabs" role="tablist">
+      <button type="button" [class.active]="modo === 'login'" (click)="modo = 'login'; mensaje = ''">
+        Administrador
+      </button>
+      <button type="button" *ngIf="false" [class.active]="modo === 'register'" (click)="modo = 'register'; mensaje = ''">
+        Crear usuario
+      </button>
+    </div>
+
+    <form *ngIf="modo === 'login'" class="auth-form" (ngSubmit)="iniciarSesion()">
+      <label>
+        Correo
+        <input type="email" name="email" [(ngModel)]="loginForm.email" autocomplete="email">
+      </label>
+
+      <label>
+        Contrasena
+        <input type="password" name="password" [(ngModel)]="loginForm.password" autocomplete="current-password">
+      </label>
+
+      <button type="submit" [disabled]="cargando">
+        {{ cargando ? 'Entrando...' : 'Entrar al panel' }}
+      </button>
+    </form>
+
+    <form *ngIf="modo === 'register'" class="auth-form" (ngSubmit)="crearUsuario()">
+      <label>
+        Nombre
+        <input type="text" name="name" [(ngModel)]="registerForm.name" autocomplete="name">
+      </label>
+
+      <label>
+        Correo
+        <input type="email" name="registerEmail" [(ngModel)]="registerForm.email" autocomplete="email">
+      </label>
+
+      <label>
+        Contrasena
+        <input type="password" name="registerPassword" [(ngModel)]="registerForm.password" autocomplete="new-password">
+      </label>
+
+      <label>
+        Confirmar contrasena
+        <input type="password" name="passwordConfirmation" [(ngModel)]="registerForm.password_confirmation" autocomplete="new-password">
+      </label>
+
+      <button type="submit" [disabled]="cargando">
+        {{ cargando ? 'Creando...' : 'Crear usuario admin' }}
+      </button>
+    </form>
+
+    <p class="auth-message" *ngIf="mensaje">{{ mensaje }}</p>
+    <a class="register-link" href="/admin/registro">Registrarme para administrar un local</a>
+  </section>
+</main>

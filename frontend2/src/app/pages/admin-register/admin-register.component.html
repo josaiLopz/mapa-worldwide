@@ -1,0 +1,54 @@
+<main class="register-page" [style.--admin-background]="adminSettings.background_color">
+  <header class="register-topbar">
+    <div class="register-title">
+      <strong>Administrador</strong>
+      <i>/</i>
+      <span>Registro para administrar local</span>
+    </div>
+    <a routerLink="/admin/login">Iniciar sesion</a>
+  </header>
+
+  <section class="register-card">
+    <div class="register-head">
+      <img class="register-logo" *ngIf="adminLogoPreview" [src]="adminLogoPreview" alt="Logo institucional">
+      <span>Administracion de local</span>
+      <h1>Registro de usuario</h1>
+      <p>Selecciona el local registrado que vas a administrar.</p>
+    </div>
+
+    <form (ngSubmit)="registrarse()">
+      <label>
+        Nombre
+        <input type="text" name="name" [(ngModel)]="form.name" autocomplete="name">
+      </label>
+
+      <label>
+        Correo
+        <input type="email" name="email" [(ngModel)]="form.email" autocomplete="email">
+      </label>
+
+      <label>
+        Local a administrar
+        <select name="local_id" [(ngModel)]="form.local_id">
+          <option [ngValue]="0">Seleccione un local</option>
+          <option *ngFor="let local of locales" [ngValue]="local.id">{{ etiquetaLocal(local) }}</option>
+        </select>
+      </label>
+
+      <label>
+        Contrasena
+        <input type="password" name="password" [(ngModel)]="form.password" autocomplete="new-password">
+      </label>
+
+      <label>
+        Confirmar contrasena
+        <input type="password" name="password_confirmation" [(ngModel)]="form.password_confirmation" autocomplete="new-password">
+      </label>
+
+      <button type="submit" [disabled]="cargando">{{ cargando ? 'Registrando...' : 'Registrarme' }}</button>
+    </form>
+
+    <p class="status" *ngIf="mensaje">{{ mensaje }}</p>
+    <a routerLink="/admin/login">Ya tengo acceso</a>
+  </section>
+</main>
